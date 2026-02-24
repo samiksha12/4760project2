@@ -5,7 +5,7 @@ How to compile the project:
 Type 'make'
 Example of how to run the project:
 ./oss -n 2 -s 2 -t 4.0 -i 0.3
-on first run for the above example it will start the worker execution at 6 seconds and will end at around 10 seconds, but if you will run it again it will start at 0 and end at 4 seconds(as expected).
+on first run for the above example it will start the worker execution at 6 seconds and will end at around 10 seconds, but if you will run it again it will start at 0 and end at 4 seconds(as expected). But when I am executing it in opsys server it is working as expected, on first try.
 
 Program behaviour:
     I am creating a shared memory which is storing  value for custom/simulated clock which is created by oss.cpp. This clock is accessed by worker.cpp to check the time and display the output based on seconds and nanoseconds. Every 0.5 seconds oss.cpp also prints the process table which store data about the process it launched, such as PID,Occupied, Start Sec, Start Nano, End Sec, End Nano.
