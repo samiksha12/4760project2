@@ -24,7 +24,6 @@ int main(int argc, char **argv)
     int seconds = atoi(argv[1]);
     int nanoseconds = atoi(argv[2]);
 
-    int worker_pid = getpid();
     int shm_key = ftok("oss.cpp", 0);
     if (shm_key <= 0)
     {

@@ -1,10 +1,10 @@
 CC	= g++
 CFLAGS  = -g3 -Wall
 TARGET1 = worker
-TARGET2 = newoss 
+TARGET2 = oss 
 
 OBJS1	= worker.o
-OBJS2	= newoss.o
+OBJS2	= oss.o
 all:	$(TARGET1) $(TARGET2)
 
 $(TARGET1):	$(OBJS1)
@@ -16,8 +16,8 @@ $(TARGET2):	$(OBJS2)
 worker.o:	worker.cpp
 	$(CC) $(CFLAGS) -c worker.cpp 
 
-newoss.o:	newoss.cpp
-	$(CC) $(CFLAGS) -c newoss.cpp
+oss.o:	oss.cpp
+	$(CC) $(CFLAGS) -c oss.cpp
 
 
 clean:

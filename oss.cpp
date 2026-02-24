@@ -14,9 +14,6 @@ const int BUFF_SZ = sizeof(int) * 2;
 int shm_key;
 int shm_id;
 int *customClock = nullptr;
-int launchedProcess = 0;
-int terminatedProcess = 0;
-
 const int BILLION = 1000000000;
 const int MAXIMUM_PROCESS = 20;
 
@@ -33,9 +30,10 @@ struct PCB
 };
 struct PCB processTable[MAXIMUM_PROCESS];
 
+/////////incrementing clock////////
 void incrementClock()
 {
-    customClock[1] += 10000000;
+    customClock[1] += 10000;
 
     while (customClock[1] >= BILLION)
     {
@@ -44,54 +42,89 @@ void incrementClock()
     }
 }
 
-// check if time passed
-bool timePassed(int sec, int nano)
+bool timeReached(int targetSec, int targetNano)
 {
-    if (customClock[0] > sec)
+    if (customClock[0] > targetSec)
         return true;
-    if (customClock[0] == sec && customClock[1] >= nano)
+    if (customClock[0] == targetSec && customClock[1] >= targetNano)
         return true;
-
     return false;
 }
 
-// Cleaning the shared memory
+void normalizeTime(int &sec, int &nano)
+{
+    if (nano >= BILLION)
+    {
+        sec++;
+        nano -= BILLION;
+    }
+}
+/////Process Table////////
+
+void initProcessTable()
+{
+    for (int i = 0; i < MAXIMUM_PROCESS; i++)
+        processTable[i].occupied = 0;
+}
+void printProcessTable()
+{
+    cout << "\nOSS PID:" << getpid()
+         << " SysClockS:" << customClock[0]
+         << " SysClockNano:" << customClock[1] << "\n";
+    cout << "Entry Occupied PID StartS StartN EndS EndN\n";
+    for (int i = 0; i < MAXIMUM_PROCESS; i++)
+    {
+        if (processTable[i].occupied)
+        {
+            cout << i << " "
+                 << processTable[i].occupied << " "
+                 << processTable[i].pid << " "
+                 << processTable[i].startSeconds << " "
+                 << processTable[i].startNano << " "
+                 << processTable[i].endingTimeSeconds << " "
+                 << processTable[i].endingTimeNano << "\n";
+        }
+        else
+        {
+            cout << i << " 0\n";
+        }
+    }
+}
+
+void clearPCB(pid_t pid)
+{
+    for (int i = 0; i < MAXIMUM_PROCESS; i++)
+    {
+        if (processTable[i].occupied &&
+            processTable[i].pid == pid)
+        {
+            processTable[i].occupied = 0;
+            break;
+        }
+    }
+}
+
+////////CleanUp
 void cleanup()
 {
     for (int i = 0; i < MAXIMUM_PROCESS; i++)
     {
         if (processTable[i].occupied)
-        {
             kill(processTable[i].pid, SIGTERM);
-        }
     }
 
-    if (customClock != nullptr)
+    if (customClock)
         shmdt(customClock);
-    customClock = 0;
-    if (shm_id != -1)
-        shmctl(shm_id, IPC_RMID, NULL);
+
+    shmctl(shm_id, IPC_RMID, NULL);
 }
 
-// Print Process table
-void printProcessTable()
+void signalHandler(int sig)
 {
-    cout << "\nOSS PID: " << getpid()
-         << " Seconds: " << customClock[0] << " Nanoseconds: " << customClock[1] << "\n";
-    cout << "Entry \t Occupied \t PID \t StartSec \t StartNano \t EndSec \t EndNano \n";
-    for (int i = 0; i < MAXIMUM_PROCESS; i++)
-    {
-        if (processTable[i].occupied)
-        {
-            cout << i << "\t" << "1 \t" << processTable[i].pid << "\t" << processTable[i].startSeconds << "\t" << processTable[i].startNano << "\t" << processTable[i].endingTimeSeconds << "\t" << processTable[i].endingTimeNano << "\n";
-        }
-        else
-        {
-            cout << i << "\t" << "0" << "\n";
-        }
-    }
+    cout << "\nOSS: Caught signal. Cleaning up...\n";
+    cleanup();
+    exit(1);
 }
-
 void printHelp()
 {
     cout << "Usage: oss [-h] [-n proc] [-s simul] [-t iter]\n"
@@ -100,23 +133,14 @@ void printHelp()
          << "-t iter  iterations per user(default 3, 0-100)\n";
 }
 
-// signal handler
-void signalHandler(int sig)
-{
-    cout << "\nOSS: Caught signal " << sig << ", cleaning up...\n";
-    cleanup();
-    exit(1);
-}
-
-// Main Function
 int main(int argc, char *argv[])
 {
-
     int n = -10;    // Since it is required I gave a dummy number, for requirement condition I am going to use ahead
     int s = 2;      // Default value is 2
     double t = 3.0; // Default value is 3seconds 0nanosecond
     double interval = 0.2;
 
+    ///////////parsing options and getting command line arguments
     int option;
     while ((option = getopt(argc, argv, "hn:s:t:i:")) != -1)
     {
@@ -142,11 +166,13 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
+
     if (n == -10)
     {
         cerr << "Error: -n (number of processes) is required. \n";
         return 1;
     }
+
     if (n < 1 || n > 100)
     {
         cerr << "Error: -n must be between 1 and 100.\n";
@@ -161,7 +187,7 @@ int main(int argc, char *argv[])
 
     if (t < 0.0 || t > 60.0)
     {
-        cerr << "Error: -t must be between 0 and 60.\n";
+        cerr << "Error: -t must be between 0.0 and 60.0.\n";
         return 1;
     }
 
@@ -169,11 +195,11 @@ int main(int argc, char *argv[])
     {
         s = n; // just in case simultaneous is greater than number of process
     }
-    cout << "OSS starting, PID: " << getpid() << "\n";
-    cout << "-n " << n << " -s " << s
-         << " -t " << t << " -i " << interval << "\n";
 
-    // Shared Memory
+    cout << "OSS starting, PID: " << getpid() << "\n";
+    printf("-n %d -s %d -t %f -i %f \n", n, s, t, interval);
+
+    ////////////// Shared Memory/////////////////////
     int shm_key = ftok("oss.cpp", 0);
     if (shm_key <= 0)
     {
@@ -194,110 +220,111 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Parent:... Error in shmat\n");
         exit(1);
     }
-    customClock[0] = 0;
-    customClock[1] = 0;
+    int *sec = &(customClock[0]);
+    int *nano = &(customClock[1]);
+    *sec = *nano = 0;
 
-    // Setup signals
-    signal(SIGALRM, signalHandler);
     signal(SIGINT, signalHandler);
+    signal(SIGALRM, signalHandler);
     alarm(60);
 
-    // Using sec and nano is throwing me error no matter what I do
-    //  int *sec = &(customClock[0]);
-    //  int *nano = &(customClock[1]);
-    //  *sec = *nano = 0;
+    initProcessTable();
 
-    // initializing PCB
-    for (int i = 0; i < MAXIMUM_PROCESS; i++)
-        processTable[i].occupied = false;
+    int launched = 0;
+    int active = 0;
 
-    int activeWorkers = 0;
-    int lastLaunchSec = 0;
-    int lastLaunchNano = 0;
     int lastPrintSec = 0;
     int lastPrintNano = 0;
 
-    while (terminatedProcess < n)
+    int lastLaunchSec = 0;
+    int lastLaunchNano = 0;
+
+    int workerSec = (int)t;
+    int workerNano = (t - workerSec) * BILLION;
+
+    int intervalSec = (int)interval;
+    int intervalNano = (interval - intervalSec) * BILLION;
+
+    ////////main while logic
+    while (launched < n || active > 0)
     {
-        incrementClock();
 
+        // printing every 0.5 sec
+        int printSec = lastPrintSec;
+        int printNano = lastPrintNano + 500000000;
+        normalizeTime(printSec, printNano);
+
+        if (timeReached(printSec, printNano))
+        {
+            printProcessTable();
+            lastPrintSec = *sec;
+            lastPrintNano = *nano;
+        }
+        // checking termination
         int status;
-        pid_t pid = waitpid(-1, &status, WNOHANG);
-        if (pid > 0)
+        pid_t pid;
+
+        while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
         {
-            terminatedProcess++;
-            activeWorkers--;
-            for (int i = 0; i < MAXIMUM_PROCESS; i++)
-            {
-                if (processTable[i].pid == pid)
-                {
-                    processTable[i].occupied = 0;
-                    break;
-                }
-            }
+            active--;
+            clearPCB(pid);
         }
+        // checking if we can launch
+        int nextLaunchSec = lastLaunchSec + intervalSec;
+        int nextLaunchNano = lastLaunchNano + intervalNano;
+        normalizeTime(nextLaunchSec, nextLaunchNano);
 
-        bool intervalPassed = false;
-        int intervalSec = (int)interval;
-        int intervalNano = (interval - intervalSec) * BILLION;
-        int tSec = (int)t;
-        int tNano = (t - tSec) * BILLION;
-
-        if (timePassed(lastLaunchSec + intervalSec, lastLaunchNano + intervalNano))
+        if (launched < n &&
+            active < s &&
+            (launched == 0 || timeReached(nextLaunchSec, nextLaunchNano)))
         {
-            intervalPassed = true;
-        }
-        if (launchedProcess < n && activeWorkers < s && intervalPassed)
-        {
-
             for (int i = 0; i < MAXIMUM_PROCESS; i++)
             {
                 if (!processTable[i].occupied)
                 {
-                    // launch worker
-                    pid_t child_pid = fork();
-                    if (child_pid == 0)
-                    {
-                        // in child
-                        char tSecString[10];
-                        char tNanoString[10];
-                        std::strcpy(tSecString, std::to_string(tSec).c_str());
-                        std::strcpy(tNanoString, std::to_string(tNano).c_str());
-                        execlp("./worker", "./worker", tSecString, tNanoString, (char *)0);
 
-                        fprintf(stderr, "Error in exec after fork\n");
+                    pid_t worker = fork();
+                    if (worker == 0)
+                    {
+
+                        char secStr[20], nanoStr[20];
+                        std::strcpy(secStr, std::to_string(workerSec).c_str());
+                        std::strcpy(nanoStr, std::to_string(workerNano).c_str());
+
+                        execl("./worker", "./worker",
+                              secStr, nanoStr, (char *)NULL);
                         exit(1);
                     }
                     processTable[i].occupied = 1;
-                    processTable[i].pid = child_pid;
-                    processTable[i].startSeconds = customClock[0];
-                    processTable[i].startNano = customClock[1];
-                    processTable[i].endingTimeSeconds = customClock[0] + tSec;
-                    processTable[i].endingTimeNano = customClock[1] + tNano;
+                    processTable[i].pid = worker;
+                    processTable[i].startSeconds = *sec;
+                    processTable[i].startNano = *nano;
+                    processTable[i].endingTimeSeconds = *sec + workerSec;
+                    processTable[i].endingTimeNano = *nano + workerNano;
+                    normalizeTime(processTable[i].endingTimeSeconds, processTable[i].endingTimeNano);
 
-                    launchedProcess++;
-                    activeWorkers++;
-
-                    lastLaunchSec = customClock[0];
-                    lastLaunchNano = customClock[1];
+                    active++;
+                    launched++;
+                    lastLaunchSec = *sec;
+                    lastLaunchNano = *nano;
                     break;
                 }
             }
         }
-        // printing processtable every half second
-
-        if (timePassed(lastPrintSec, lastPrintNano + 500000000))
-        {
-            printProcessTable();
-
-            lastPrintSec = customClock[0];
-            lastPrintNano = customClock[1];
-        }
+        incrementClock();
     }
+    cout << "\nOSS terminating\n";
+    cout << launched << " workers launched and terminated\n";
+    long long totalNano =
+        (long long)n * ((long long)workerSec * BILLION + workerNano);
+
+    long long finalSec = totalNano / BILLION;
+    long long finalNano = totalNano % BILLION;
+
+    cout << "Workers ran for a combined time of "
+         << finalSec << " seconds "
+         << finalNano << " nanoseconds.\n";
 
     cleanup();
-    cout << "\nOSS terminating\n";
-    cout << launchedProcess << " workers launched and terminated\n";
-
     return 0;
 }
