@@ -1,10 +1,10 @@
-CC	= gcc
+CC	= g++
 CFLAGS  = -g3 -Wall
-TARGET1 = memchild
-TARGET2 = memmain 
+TARGET1 = worker
+TARGET2 = newoss 
 
-OBJS1	= memchild.o
-OBJS2	= memmain.o
+OBJS1	= worker.o
+OBJS2	= newoss.o
 all:	$(TARGET1) $(TARGET2)
 
 $(TARGET1):	$(OBJS1)
@@ -13,11 +13,11 @@ $(TARGET1):	$(OBJS1)
 $(TARGET2):	$(OBJS2)
 	$(CC) $(CFLAGS) -o $(TARGET2) $(OBJS2)
 
-memchild.o:	memchild.c
-	$(CC) $(CFLAGS) -c memchild.c 
+worker.o:	worker.cpp
+	$(CC) $(CFLAGS) -c worker.cpp 
 
-memmain.o:	memmain.c
-	$(CC) $(CFLAGS) -c memmain.c
+newoss.o:	newoss.cpp
+	$(CC) $(CFLAGS) -c newoss.cpp
 
 
 clean:
