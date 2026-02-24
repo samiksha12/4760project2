@@ -2,7 +2,7 @@ Name: Samiksha Sapkota
 Date: February 18, 2026
 Environment: Mac , Visual Studio Code
 How to compile the project:
-make
+Type 'make'
 Example of how to run the project:
 ./oss -n 2 -s 2 -t 4.0 -i 0.3
 on first run for the above example it will start the worker execution at 6 seconds and will end at around 10 seconds, but if you will run it again it will start at 0 and end at 4 seconds(as expected).
